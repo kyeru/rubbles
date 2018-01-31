@@ -1,3 +1,5 @@
+# -*- coding: utf8 -*-
+
 import datetime
 import math
 import os
@@ -6,12 +8,13 @@ import pandas_datareader.data as pd
 from pandas import DataFrame, Timestamp
 import matplotlib.pyplot as plt
 
+import kospi_code
+
 
 #
 # Global variables
 #
 
-error_codes = list()
 date_begin = datetime.date(2014, 1, 1)
 date_end = datetime.date.today()
 
@@ -20,28 +23,14 @@ date_end = datetime.date.today()
 # Data Setup
 #
 
-def read_codes(file_path):
-    '''Extracts company codes (and names if any) from given file.
-    '''
-    codes = list()
-    names = list()
-    with open(file_path) as code_file:
-        for line in code_file:
-            codes.append(str(line.strip()))
-            # tokens = line.split()
-            # if len(tokens) >= 2:
-            #     codes.append(str(tokens[0]))
-            #     names.append(str(tokens[1]))
-    return codes, names
-
-
-def read_records(code, record_dir):
+def read_records(code, record_file):
     '''Reads records of a company and return as a DataFrame object.'''
-    record_file = record_dir + '/' + code + '.txt'
-    last_update = date_begin
     if not os.path.exists(record_file):
-        return None, last_update
+        f = open(record_file, 'w')
+        f.close()
+        
     with open(record_file, 'r') as f:
+        last_update = date_begin
         records = list()
         for line in f:
             records.append(line)
@@ -57,41 +46,28 @@ def read_records(code, record_dir):
         return data, last_update
 
 
-def read_multiple_records(codes, record_dir):
-    '''Read records of multiple companies.'''
-    result = list()
-    for code in codes:
-        data, = read_records(code, record_dir)
-        result.append((code, data))
-    return result
+def get_data_list(codes, record_dir):
+    '''Read records of given multiple companies.
 
-
-def read_all_records(code_file, record_dir):
-    '''Read records of all codes.
-
-    Returns a list of (code, data) pairs.
-    '''
-    if not os.path.exists(code_file):
-        raise Exception('Code file not exists.')
+    Returns a list of (code, dataframe) pairs.'''
     if (not os.path.exists(record_dir)) or (not os.path.isdir(record_dir)):
         raise Exception('Record directory not exists.')
 
-    code_n_data = list()
-    codes, _ = read_codes(code_file)
-    for code in codes:
-        data, _ = read_records(code, record_dir)
-        if data is not None:
-            code_n_data.append((code, data))
-    return code_n_data
+    data_list = list()
+    for code, name in codes:
+        record_file = record_dir + '/' + code + '.txt'
+        data, _ = read_records(code, record_file)
+        data_list.append((code, data))
+    return data_list
 
 
-def update_records(code, record_dir, verbose = True):
+def update_records(code, record_file, verbose = True):
     '''Appends records of a company.
 
     Appends stock price records of given company code.
+    Returns True if succeeded, False otherwise.
     '''
-    record_file = record_dir + '/' + code + '.txt'
-    data, last_update = read_records(code, record_dir)
+    data, last_update = read_records(code, record_file)
     last_date = date_end
     try:
         if verbose:
@@ -106,25 +82,26 @@ def update_records(code, record_dir, verbose = True):
         with open(record_file, 'a') as f:
             new_data.to_csv(f, header = (data.size == 0))
     except Exception as e:
-        error_codes.append(code)
         print 'Error in code ' + code + ': ' + str(e)
+        return False
+    return True
 
 
-def update_codes(code_file, record_dir):
+def update_record_files(codes, record_dir):
     '''Updates records.
 
-    Updates price records for all codes in the [code_file].
+    Updates stock price records for given codes.
     Result files are stored in [record_dir].
     '''
-    if not os.path.exists(code_file):
-        raise Exception('Code file not exists.')
     if (not os.path.exists(record_dir)) or (not os.path.isdir(record_dir)):
         raise Exception('Record directory not exists.')
 
-    codes, _ = read_codes(code_file)
-    for code in codes:
-        update_records(code, record_dir)
-    print error_codes
+    error_codes = list()
+    for code, name in codes:
+        record_file = record_dir + '/' + code + '.txt'
+        if not update_records(code, record_file):
+            error_codes.append(code)
+    print 'Error in\n' + str(error_codes)
 
 
 #
@@ -159,32 +136,65 @@ def analyze_all(records, **conf):
     rates = DataFrame()
     for code, values in records:
         try:
-            rates[code] = change_rate(
-                values, conf['col'], conf['slide'], conf['days'])
+            rates[code] = change_rate(values, 'Close', 1, 500)
         except Exception as e:
             print 'Error in %s: %s' % (code, str(e))
             raise e
 
+    # test
+    kospi200map = dict()
+    for code, name in kospi_code.kospi200:
+        kospi200map[code] = name
+    for code, values in records:
+        mean = values['Close'].tail(300).aggregate('mean')
+        last = values['Close'].tail(1).aggregate('min')
+        if code in kospi200map and last < mean * (1 - 0.1):
+            print '<div><a href="http://finance.naver.com/item/main.nhn?code=' \
+                + code + '">' + kospi200map[code] + '</a></div>'
+
     # Up-Down
-    print '=== Up-downs ==='
-    counts = DataFrame()
-    for code, rate in rates.iteritems():
-        counts[code] = rate.gt(0).value_counts()
-    print 'Most ups:'
-    print counts.transpose()[True].nlargest(10)
-    print 'Least ups:'
-    print counts.transpose()[True].nsmallest(10)
+    # print '=== Up-downs ==='
+    # counts = DataFrame()
+    # for code, rate in rates.iteritems():
+    #     counts[code] = rate.gt(0).value_counts()
+    # print 'Most ups:'
+    # print counts.transpose()[True].nlargest(10)
+    # print 'Least ups:'
+    # print counts.transpose()[True].nsmallest(10)
     # print counts.transpose()[False].nlargest(10)
 
     # Hike
     print '=== Hike ranking ==='
     hike_counts = DataFrame()
+    h1 = DataFrame()
+    h2 = DataFrame()
+    h3 = DataFrame()
+    h4 = DataFrame()
+    h5 = DataFrame()
     for code, rate in rates.iteritems():
-        hike_counts[code] = rate.apply(lambda x: x >= 2.0).value_counts()
-    print hike_counts.transpose()[True].nlargest(20)
+        h1[code] = rate.tail(50).apply(lambda x: x > 0.5).value_counts()
+        h2[code] = rate.tail(100).apply(lambda x: x > 0.5).value_counts()
+        #h3[code] = rate.tail(300).apply(lambda x: x > 0.5).value_counts()
+        # h4[code] = rate.tail(400).apply(lambda x: x > 1.0).value_counts()
+        # h5[code] = rate.tail(500).apply(lambda x: x > 1.0).value_counts()
+    h1 = h1.transpose()[True].nlargest(100)
+    h2 = h2.transpose()[True]
+    h2 = h2.nsmallest(h2.size - 100)
 
+    # h3 = h3.transpose()[True]
+    # h3 = h3.nsmallest(h3.size - 50)
+    # h4 = h4.transpose()[True].nlargest(50)
+    # h5 = h5.transpose()[True].nlargest(50)
+    
+    # h1, _ = h1.align(h2, axis = 0, join = 'inner')
+    h1, _ = h1.align(h2, axis = 0, join = 'inner')
+    # h1, _ = h1.align(h4, axis = 0, join = 'inner')
+    # h1, _ = h1.align(h5, axis = 0, join = 'inner')
+
+    # print h1
+    
     # print '==== plot rates ===='
-    plot_items(rates, 2, 400)
+    # plot_items(rates, 2, 400)
 
     # Note: correlation is not worth to study.
     # print '==== highest correlations ===='
@@ -201,14 +211,6 @@ def analyze_all(records, **conf):
     #     highest_rates[code] = rates[code]
     # # plot_items(highest_rates, 5, 200)
 
-    # print '==== lowest liquidities(variances) ===='
-    # var_lowest = rates.var().nsmallest(5)
-    # print var_lowest
-    # lowest_rates = dict()
-    # for code, value in var_lowest.iteritems():
-    #     lowest_rates[code] = rates[code]
-    # # plot_items(lowest_rates, 5, 200)
-
 
 #
 # Plot
@@ -216,11 +218,13 @@ def analyze_all(records, **conf):
 
 def plot_items(data, count, series_length):
     handles = list()
+    number = 1
     for code, rates in data.iteritems():
+        if number > count:
+            break
         p_h, = plt.plot(rates.tail(series_length), label = code)
         handles += [p_h]
-        if --count == 0:
-            break
+        number += 1
     plt.legend(handles)
     plt.show()
 
@@ -230,17 +234,16 @@ def plot_items(data, count, series_length):
 #
 
 if __name__ == '__main__':
-    code_file = 'kospi.txt'
     record_dir = 'kospi_records'
 
     # Data update
     # date_begin = datetime.date(2014, 1, 1)
     # date_end = datetime.date.today()
-    # update_codes(code_file, record_dir)
+    # update_record_files(kospi_code.kospi200, record_dir)
 
     # Full data analysis
-    all_records = read_all_records(code_file, record_dir)
-    analyze_all(all_records, col = 'Close', slide = 5, days = 200)
+    data_list = get_data_list(kospi_code.kospi200, record_dir)
+    analyze_all(data_list, col = 'Close', slide = 1, days = 200)
 
     # Target analysis
     # target_codes = ['002240']
