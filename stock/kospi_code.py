@@ -202,3 +202,7 @@ kospi200 = [
     ("271560", "오리온"),
     ("282330", "BGF리테일"),
 ]
+
+kospi200map = dict()
+for code, name in kospi200:
+    kospi200map[code] = name

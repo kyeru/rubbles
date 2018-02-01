@@ -142,15 +142,12 @@ def analyze_all(records, **conf):
             raise e
 
     # test
-    kospi200map = dict()
-    for code, name in kospi_code.kospi200:
-        kospi200map[code] = name
-    for code, values in records:
-        mean = values['Close'].tail(300).aggregate('mean')
-        last = values['Close'].tail(1).aggregate('min')
-        if code in kospi200map and last < mean * (1 - 0.1):
-            print '<div><a href="http://finance.naver.com/item/main.nhn?code=' \
-                + code + '">' + kospi200map[code] + '</a></div>'
+    # for code, values in records:
+    #     mean = values['Close'].tail(300).aggregate('mean')
+    #     last = values['Close'].tail(1).aggregate('min')
+    #     if code in kospi_code.kospi200map and last < mean * (1 - 0.1):
+    #         print '<div><a href="http://finance.naver.com/item/main.nhn?code=' \
+    #             + code + '">' + kospi200map[code] + '</a></div>'
 
     # Up-Down
     # print '=== Up-downs ==='
@@ -168,18 +165,17 @@ def analyze_all(records, **conf):
     hike_counts = DataFrame()
     h1 = DataFrame()
     h2 = DataFrame()
-    h3 = DataFrame()
-    h4 = DataFrame()
-    h5 = DataFrame()
+    # h3 = DataFrame()
+    # h4 = DataFrame()
+    # h5 = DataFrame()
     for code, rate in rates.iteritems():
-        h1[code] = rate.tail(50).apply(lambda x: x > 0.5).value_counts()
-        h2[code] = rate.tail(100).apply(lambda x: x > 0.5).value_counts()
-        #h3[code] = rate.tail(300).apply(lambda x: x > 0.5).value_counts()
+        h1[code] = rate.tail(30).apply(lambda x: x > 0.5 and x < 1.5).value_counts()
+        h2[code] = rate.tail(60).apply(lambda x: x > 0.5 and x < 1.5).value_counts()
+        # h3[code] = rate.tail(300).apply(lambda x: x > 0.5).value_counts()
         # h4[code] = rate.tail(400).apply(lambda x: x > 1.0).value_counts()
         # h5[code] = rate.tail(500).apply(lambda x: x > 1.0).value_counts()
-    h1 = h1.transpose()[True].nlargest(100)
-    h2 = h2.transpose()[True]
-    h2 = h2.nsmallest(h2.size - 100)
+    h1 = h1.transpose()[True].nlargest(30)
+    h2 = h2.transpose()[True].nsmallest(h2.size - 30)
 
     # h3 = h3.transpose()[True]
     # h3 = h3.nsmallest(h3.size - 50)
@@ -190,8 +186,8 @@ def analyze_all(records, **conf):
     h1, _ = h1.align(h2, axis = 0, join = 'inner')
     # h1, _ = h1.align(h4, axis = 0, join = 'inner')
     # h1, _ = h1.align(h5, axis = 0, join = 'inner')
-
-    # print h1
+    for code, value in h1.iteritems():
+        print code, value
     
     # print '==== plot rates ===='
     # plot_items(rates, 2, 400)
